@@ -8,8 +8,13 @@ function snaplabchat(imgpath, flter)
 %   filter -  "moustache"
 %             "tophat"
 
+close all;
+
 % handle input arguments
-if nargin < 2
+if nargin < 1
+    imgpath = 'example.jpg';
+    flter = 'moustache';
+elseif nargin < 2
     flter = 'moustache';
 end
 
@@ -17,13 +22,11 @@ end
 img = imread(imgpath);
 
 % load filters and their keypoints
-load('filter.m');
+load('filters.mat');
 
 switch flter
     case 'moustache'
         f = 1;
-    case 'tophat'
-        f = 2;
     otherwise
         error('Error: Filter type does not exist');
 end
@@ -34,7 +37,7 @@ kps = facialkps(img);
 % apply filter to each face in the image
 for i = 1:length(kps)
     % match facial keypoints with the filter's keypoints
-    params = matchkps(kps(i), flter(f).kps);
+    tform = matchkps(kps{i}, filters.kps);
     
     % add filter to current face
     img = overlayfilter(img, params);
@@ -47,43 +50,71 @@ end
 
 function kps = facialkps(img)
 %FACIALKPS Finds faces and their four facial keypoints.
-%   This function finds four facial keypoints (left eye, right eye, nose,
-%   and mouth) for each face in the input image. The function output is an
-%   array of 4x2 keypoint matrices for each face.
+%   This function finds four facial keypoints (mouth, nose, left eye, and
+%   right eye) for each face in the input image. The function output is a
+%   cell array of 4x2 keypoint matrices for each face.
 
 % create detectors
 faceDetector = vision.CascadeObjectDetector('FrontalFaceCART');
-mouthDetector = vision.CascadeObjectDetector('Mouth');
-noseDetector = vision.CascadeObjectDetector('Nose');
-leftEyeDetector = vision.CascadeObjectDetector('LeftEye');
-rightEyeDetector = vision.CascadeObjectDetector('RightEye');
+mouthDetector = vision.CascadeObjectDetector('Mouth', 'MergeThreshold',16, 'UseROI', true);
+noseDetector = vision.CascadeObjectDetector('Nose', 'MergeThreshold', 16, 'UseROI', true);
+eyesDetector = vision.CascadeObjectDetector('EyePairSmall', 'MergeThreshold', 16, 'UseROI', true);
 
 % find faces
-bbox_faces = step(faceDetector, img);
-
-% display detected faces (useful for debugging
-img_faces = insertObjectAnnotation(img, 'rectangle', bbox_faces, 'Face');   
-figure; imshow(img_faces); title('Detected Faces');
+faces_bbox = step(faceDetector, img);
 
 % find facial keypoints for each face
 bbox2centroid = @(x) [x(1) + x(3)/2, x(2) + x(4)/2];
-nfaces = size(bbox_faces, 1);
-bbox = zeros(nfaces,1);
+nfaces = size(faces_bbox, 1);
+kps = cell(nfaces,1);
+img_all = img;
 for i = 1:nfaces
-    % find four facialy keypoits
-    bbox_mouth = step(mouthDetector,img);
-    bbox_nose = step(noseDetector,img);
-    bbox_leftEye = step(leftEyeDetector,img);
-    bbox_rightEye = step(rightEyeDetector,img);
+    % grow face bbox
+    scale = [.1, .75];
+    face_bbox = faces_bbox(i,:);
+    border = (face_bbox(3:4) .* scale) ./ 2;
+    face_bbox = face_bbox + [-border, border];
+    face_bbox(face_bbox < 1) = 1;
+    
+    % find facialy keypoints
+    mouth_bbox = step(mouthDetector,img, face_bbox);
+    nose_bbox = step(noseDetector,img, face_bbox);
+    eyes_bbox = step(eyesDetector,img, face_bbox);
+    
+    % skip to next face if we didn't find all the features
+    if isempty(mouth_bbox) || isempty(nose_bbox) || isempty(eyes_bbox)
+        continue;
+    end
+    
+    % remove eyes detected as mouths
+    mouth_bbox = sortrows(mouth_bbox, -2);
+    mouth_bbox = mouth_bbox(1,:);
+    
+    % display detected features (useful for debugging)
+    img_all = insertObjectAnnotation(img_all, 'rectangle', face_bbox, 'face');   
+    img_all = insertObjectAnnotation(img_all, 'rectangle', mouth_bbox, 'mouth'); 
+    img_all = insertObjectAnnotation(img_all, 'rectangle', nose_bbox, 'nose');  
+    img_all = insertObjectAnnotation(img_all, 'rectangle', eyes_bbox, 'eyes');  
     
     % convert from bbox to centroids
+    mouth_kps = bbox2centroid(mouth_bbox);
+    nose_kps = bbox2centroid(nose_bbox);
+    leftEye_kps = bbox2centroid(eyes_bbox) - [eyes_bbox(3)/4 , 0];
+    rightEye_kps = bbox2centroid(eyes_bbox) + [eyes_bbox(3)/4, 0];
     
-    
+    % construct keypoint matrix
+    kps{i} = [mouth_kps; nose_kps; leftEye_kps; rightEye_kps];
 end
+
+% remove any empty cells
+kps = kps(~cellfun('isempty', kps));
+
+% plot if in debug mode
+figure; imshow(img_all); title('Detected Faces');
 
 end
 
-function matchkps(kps1, kps2)
+function tform = matchkps(kps1, kps2)
 %MATCHKPS
 
 end
