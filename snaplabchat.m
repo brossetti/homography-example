@@ -35,16 +35,26 @@ end
 kps = facialkps(img);
 
 % apply filter to each face in the image
+figure; subplot(1,2,1); imshow(img);
+img_overlay = img;
 for i = 1:length(kps)
     % match facial keypoints with the filter's keypoints
-    tform = matchkps(kps{i}, filters.kps);
+    tform = homography(kps{i}, filters.kps);
+    
+    % plot current keypoints
+    hold on;
+    plot(kps{i}(1,1),kps{i}(1,2), 'ro');     % mouth
+    plot(kps{i}(2,1),kps{i}(2,2), 'yo');     % nose
+    plot(kps{i}(3:4,1),kps{i}(3:4,2), 'go'); % eyes
+    hold off;
     
     % add filter to current face
-    img = overlayfilter(img, params);
+    img_overlay = overlayfilter(img_overlay, filters.img{f}, tform);
 end
 
 % display results
-imshow(img)
+subplot(1,2,2);
+imshow(img_overlay);
 
 end
 
@@ -67,7 +77,6 @@ faces_bbox = step(faceDetector, img);
 bbox2centroid = @(x) [x(1) + x(3)/2, x(2) + x(4)/2];
 nfaces = size(faces_bbox, 1);
 kps = cell(nfaces,1);
-img_all = img;
 for i = 1:nfaces
     % grow face bbox
     scale = [.1, .75];
@@ -90,11 +99,9 @@ for i = 1:nfaces
     mouth_bbox = sortrows(mouth_bbox, -2);
     mouth_bbox = mouth_bbox(1,:);
     
-    % display detected features (useful for debugging)
-    img_all = insertObjectAnnotation(img_all, 'rectangle', face_bbox, 'face');   
-    img_all = insertObjectAnnotation(img_all, 'rectangle', mouth_bbox, 'mouth'); 
-    img_all = insertObjectAnnotation(img_all, 'rectangle', nose_bbox, 'nose');  
-    img_all = insertObjectAnnotation(img_all, 'rectangle', eyes_bbox, 'eyes');  
+    % keep lowest nose
+    nose_bbox = sortrows(nose_bbox, -2);
+    nose_bbox = nose_bbox(1,:);
     
     % convert from bbox to centroids
     mouth_kps = bbox2centroid(mouth_bbox);
@@ -109,50 +116,32 @@ end
 % remove any empty cells
 kps = kps(~cellfun('isempty', kps));
 
-% plot if in debug mode
-figure; imshow(img_all); title('Detected Faces');
+end
+
+function tform = homography(kps1, kps2)
+%HOMOGRAPHY Finds the homography between two corresponding point sets
+%    This function find the homographic matrix, H, 
+
+% Solve equations using SVD
+x = kps1(:,1)'; 
+y = kps1(:,2)'; 
+X = kps2(:,1)'; 
+Y = kps2(:,2)';
+rows0 = zeros(3, 4);
+rowsXY = -[X; Y; ones(1,4)];
+hx = [rowsXY; rows0; x.*X; x.*Y; x];
+hy = [rows0; rowsXY; y.*X; y.*Y; y];
+h = [hx hy];
+
+[U, ~, ~] = svd(h);
+
+H = (reshape(U(:,9), 3, 3)).';
+
+tform = projective2d(H');
 
 end
 
-function tform = matchkps(kps1, kps2)
-%MATCHKPS
-
-end
-
-function tform = ransac(data,num,iter,threshDist,inlierRatio)
-% RANSAC 
-% data: a 2xn dataset with #n data points
-% num: the minimum number of points. For line fitting problem, num=2
-% iter: the number of iterations
-% threshDist: the threshold of the distances between points and the fitting line
-% inlierRatio: the threshold of the number of inliers 
-
-    %% Plot the data points
-    figure;plot(data(1,:),data(2,:),'o');hold on;
-    number = size(data,2); % Total number of points
-    bestInNum = 0; % Best fitting line with largest number of inliers
-    bestParameter1=0;bestParameter2=0; % parameters for best fitting line
-    for i=1:iter
-    %% Randomly select 2 points
-     idx = randperm(number,num); sample = data(:,idx);   
-    %% Compute the distances between all points with the fitting line 
-     kLine = sample(:,2)-sample(:,1);% two points relative distance
-     kLineNorm = kLine/norm(kLine);
-     normVector = [-kLineNorm(2),kLineNorm(1)];%Ax+By+C=0 A=-kLineNorm(2),B=kLineNorm(1)
-     distance = normVector*(data - repmat(sample(:,1),1,number));
-    %% Compute the inliers with distances smaller than the threshold
-     inlierIdx = find(abs(distance)<=threshDist);
-     inlierNum = length(inlierIdx);
-    %% Update the number of inliers and fitting model if better model is found     
-     if inlierNum>=round(inlierRatio*number) && inlierNum>bestInNum
-         bestInNum = inlierNum;
-         parameter1 = (sample(2,2)-sample(2,1))/(sample(1,2)-sample(1,1));
-         parameter2 = sample(2,1)-parameter1*sample(1,1);
-         bestParameter1=parameter1; bestParameter2=parameter2;
-     end
-    end
-end
-
-function img = overlayfilter(img, params)
-    
+function img_overlay = overlayfilter(img, flter, tform)
+    flter_warp = imwarp(flter, tform, 'OutputView', imref2d(size(img(:,:,1))));
+    img_overlay = imfuse(img, flter_warp, 'diff');
 end
