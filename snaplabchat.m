@@ -35,8 +35,9 @@ end
 kps = facialkps(img);
 
 % apply lens to each face in the image
-figure; subplot(1,2,1); imshow(img);
-img_overlay = img;
+figure; 
+subplot(1,2,1); imshow(img);
+subplot(1,2,2); imshow(img);
 for i = 1:length(kps)
     % match facial keypoints with the lens' keypoints
     H = homography2d([lenses.kps; ones(1, 7)], [kps{i}; ones(1,7)]);
@@ -45,6 +46,7 @@ for i = 1:length(kps)
     tform = projective2d(H');
     
     % plot current keypoints
+    subplot(1,2,1);
     hold on;
     plot(kps{i}(1,1:4),kps{i}(2,1:4), 'ro'); % mouth
     plot(kps{i}(1,5),kps{i}(2,5), 'yo');     % nose
@@ -52,12 +54,11 @@ for i = 1:length(kps)
     hold off;
     
     % add filter to current face
-    img_overlay = overlayfilter(img_overlay, lenses.img{f}, tform);
+    subplot(1,2,2);
+    hold on;
+    overlayfilter(lenses.img{f}, tform, size(img(:,:,1)));
+    hold off;
 end
-
-% display results
-subplot(1,2,2);
-imshow(img_overlay);
 
 end
 
@@ -124,14 +125,15 @@ kps = kps(~cellfun('isempty', kps));
 
 end
 
-function img_overlay = overlayfilter(img, lens, tform)
+function overlayfilter(lens, tform, s)
 %OVERLAYFILTER Warps and overlays a lens onto a given image
-%    This function uses a given lens to warp a filter image and overlay
-%    it on an image.
+%    This function uses a given transform to warp a lens and overlay
+%    it on an existing image.
 
     % warp the lens
-    lens_warp = imwarp(lens, tform, 'OutputView', imref2d(size(img(:,:,1))));
+    lens_warp = imwarp(lens, tform, 'OutputView', imref2d(s));
     
     % overlay
-    img_overlay = imfuse(img, lens_warp, 'diff');
+    h = imshow(lens_warp(:,:,1:3));
+    set(h, 'AlphaData', squeeze(lens_warp(:,:,4)));
 end
