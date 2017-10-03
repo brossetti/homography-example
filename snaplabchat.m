@@ -7,6 +7,10 @@ function snaplabchat(imgpath, lens)
 %   imgpath - path to input image file
 %   lens -  "moustache"
 %   
+%   This demo uses functions provided by the wonderful Peter Kovesi. More
+%   code from Peter can be found on his website:
+%   (http://www.peterkovesi.com/matlabfns/)
+%   
 
 % cleanup
 clear; close all;
