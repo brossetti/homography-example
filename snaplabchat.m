@@ -6,7 +6,7 @@ function snaplabchat(imgpath, flter)
 % 
 %   imgpath - path to input image file
 %   filter -  "moustache"
-%             "tophat"
+%   
 
 close all;
 
@@ -39,7 +39,7 @@ figure; subplot(1,2,1); imshow(img);
 img_overlay = img;
 for i = 1:length(kps)
     % match facial keypoints with the filter's keypoints
-    tform = homography(kps{i}, filters.kps);
+    tform = findHomography(kps{i}, filters.kps);
     
     % plot current keypoints
     hold on;
@@ -118,30 +118,99 @@ kps = kps(~cellfun('isempty', kps));
 
 end
 
-function tform = homography(kps1, kps2)
-%HOMOGRAPHY Finds the homography between two corresponding point sets
+function H = findHomography(kps1, kps2)
+%FINDHOMOGRAPHY Finds normalized homography given two matched point sets
+%    
+
+% normalization of x
+[p1, t1] = normalizePts(kps1);
+
+% normalization of x'
+[p2, t2] = normalizePts(kps2);
+
+% direct linear transform
+H_tilde = dlt(p1, p2);
+
+% denormalize
+H = inv(t2) * H_tilde * t1;
+
+end
+
+function [norm_pts, t] = normalizePts(pts)
+
+    if size(pts,1) ~= 3
+        error('pts must be 3xN');
+    end
+    
+    % Find the indices of the points that are not at infinity
+    finiteind = find(abs(pts(3,:)) > eps);
+    
+    if length(finiteind) ~= size(pts,2)
+        warning('Some points are at infinity');
+    end
+    
+    % For the finite points ensure homogeneous coords have scale of 1
+    pts(1,finiteind) = pts(1,finiteind)./pts(3,finiteind);
+    pts(2,finiteind) = pts(2,finiteind)./pts(3,finiteind);
+    pts(3,finiteind) = 1;
+    
+    c = mean(pts(1:2,finiteind)')';            % Centroid of finite points
+    newp(1,finiteind) = pts(1,finiteind)-c(1); % Shift origin to centroid.
+    newp(2,finiteind) = pts(2,finiteind)-c(2);
+    
+    dist = sqrt(newp(1,finiteind).^2 + newp(2,finiteind).^2);
+    meandist = mean(dist(:));  % Ensure dist is a column vector for Octave 3.0.1
+    
+    scale = sqrt(2)/meandist;
+    
+    T = [scale   0   -scale*c(1)
+         0     scale -scale*c(2)
+         0       0      1      ];
+    
+    norm_pts = T*pts;
+end
+
+function tform = dlt(kps1, kps2)
+%DLT Finds unnormalized homography given two matched point sets
 %    This function find the homographic matrix, H, 
 
-% Solve equations using SVD
-x = kps1(:,1)'; 
-y = kps1(:,2)'; 
-X = kps2(:,1)'; 
-Y = kps2(:,2)';
-rows0 = zeros(3, 4);
-rowsXY = -[X; Y; ones(1,4)];
-hx = [rowsXY; rows0; x.*X; x.*Y; x];
-hy = [rows0; rowsXY; y.*X; y.*Y; y];
-h = [hx hy];
+% compute matrix Ai from (4.1)
 
-[U, ~, ~] = svd(h);
+% assemble matrix A
 
-H = (reshape(U(:,9), 3, 3)).';
+% obtain SVD of A
 
-tform = projective2d(H');
+% determine matrix H from h
+
+
+x2 = p2(1,:);
+y2 = p2(2,:);
+z2 = p2(3,:);
+
+% Ah = 0
+a = [];
+for i=1:size(p1,2)
+    a = [a; zeros(3,1)'     -z2(i)*p1(:,i)'   y2(i)*p1(:,i)'; ...
+            z2(i)*p1(:,i)'   zeros(3,1)'     -x2(i)*p1(:,i)'];
+           %-y2*p1     x2*p1      zeros(1,3)
+end
+
+[u,d,v] = svd(a);
+
+h = reshape(v(:,9),3,3)';
+
+tform = projective2d(h');
 
 end
 
 function img_overlay = overlayfilter(img, flter, tform)
+%OVERLAYFILTER Warps and overlays a filter onto a given image
+%    This function uses a given filter to warp a filter image and overlay
+%    it on an image.
+
+    % warp the filter
     flter_warp = imwarp(flter, tform, 'OutputView', imref2d(size(img(:,:,1))));
+    
+    % overlay
     img_overlay = imfuse(img, flter_warp, 'diff');
 end
