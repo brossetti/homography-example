@@ -8,7 +8,8 @@ function snaplabchat(imgpath, lens)
 %   lens -  "moustache"
 %   
 
-close all;
+% cleanup
+clear; close all;
 
 % handle input arguments
 if nargin < 1
@@ -43,7 +44,7 @@ for i = 1:length(kps)
     H = homography2d([lenses.kps; ones(1, 7)], [kps{i}; ones(1,7)]);
     
     % construct MATLAB transform
-    tform = projective2d(H');
+    tform = projective2d(H);
     
     % plot current keypoints
     subplot(1,2,1);
@@ -53,20 +54,20 @@ for i = 1:length(kps)
     plot(kps{i}(1,6:7),kps{i}(2,6:7), 'go'); % eyes
     hold off;
     
-    % add filter to current face
+    % add lens to current face
     subplot(1,2,2);
     hold on;
-    overlayfilter(lenses.img{f}, tform, size(img(:,:,1)));
+    overlaylens(lenses.img{f}, tform, size(img(:,:,1)));
     hold off;
 end
 
 end
 
 function kps = facialkps(img)
-%FACIALKPS Finds faces and their four facial keypoints.
+%FACIALKPS Finds faces and their seven facial keypoints.
 %   This function finds seven facial keypoints (mouth, nose, and eyes) for 
 %   each face in the input image. The function output is a cell array of
-%   2x7 keypoint matrices for each face.
+%   2x7 keypoint matrices (one for each face).
 
 % create detectors
 faceDetector = vision.CascadeObjectDetector('FrontalFaceCART');
@@ -89,7 +90,7 @@ for i = 1:nfaces
     face_bbox = face_bbox + [-border, border];
     face_bbox(face_bbox < 1) = 1;
     
-    % find facialy keypoints
+    % find face parts
     mouth_bbox = step(mouthDetector,img, face_bbox);
     nose_bbox = step(noseDetector,img, face_bbox);
     eyes_bbox = step(eyesDetector,img, face_bbox);
@@ -125,8 +126,8 @@ kps = kps(~cellfun('isempty', kps));
 
 end
 
-function overlayfilter(lens, tform, s)
-%OVERLAYFILTER Warps and overlays a lens onto a given image
+function overlaylens(lens, tform, s)
+%OVERLAYLENS Warps and overlays a lens onto a plotted image
 %    This function uses a given transform to warp a lens and overlay
 %    it on an existing image.
 
