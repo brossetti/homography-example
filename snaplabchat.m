@@ -13,7 +13,7 @@ function snaplabchat(imgpath, lens)
 %   
 
 % cleanup
-clear; close all;
+close all;
 
 % handle input arguments
 if nargin < 1
