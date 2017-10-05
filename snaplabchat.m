@@ -48,7 +48,7 @@ for i = 1:length(kps)
     H = homography2d([lenses.kps; ones(1, 7)], [kps{i}; ones(1,7)]);
     
     % construct MATLAB transform
-    tform = projective2d(H);
+    tform = projective2d(H');
     
     % plot current keypoints
     subplot(1,2,1);
